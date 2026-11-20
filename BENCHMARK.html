@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Benchmark Standard</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1c1a; --muted: #6b6862; --rule: #e4e1da;
+    --card: #ffffff; --code-bg: #f1efe9; --accent: #b4532a; --accent-soft: #f6e7df;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #181715; --fg: #ecebe6; --muted: #a29f97; --rule: #33312d;
+      --card: #201f1c; --code-bg: #2a2925; --accent: #e08a5f; --accent-soft: #3a2a21;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #181715; --fg: #ecebe6; --muted: #a29f97; --rule: #33312d;
+    --card: #201f1c; --code-bg: #2a2925; --accent: #e08a5f; --accent-soft: #3a2a21;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 6px; }
+  .byline { color: var(--muted); font-size: .9rem; margin-bottom: 28px; }
+  h2 { font-size: 1.35rem; margin: 48px 0 12px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  p, li { max-width: 72ch; }
+  code { font: .88em/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  .table-wrap { overflow-x: auto; margin: 14px 0 20px; }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; background: var(--card); }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border: 1px solid var(--rule); }
+  th { background: var(--code-bg); font-weight: 600; }
+  .formula {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: var(--accent-soft); border-radius: 10px; padding: 16px; margin: 16px 0;
+    font-weight: 600; font-size: 1.05rem;
+  }
+  .formula .part { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 6px 12px; }
+  .formula .op { color: var(--muted); }
+  ol.checks li { margin-bottom: 8px; }
+  nav { font-size: .9rem; color: var(--muted); margin-bottom: 8px; }
+  nav a { color: var(--accent); text-decoration: none; margin-right: 14px; display: inline-block; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+<h1>Build &amp; Break Round 1: Benchmark Standard</h1>
+<div class="byline">As of 2026-11-17 · One-Time Secret Service</div>
+
+<nav>
+  <a href="#scoring">Scoring</a><a href="#why">Why</a><a href="#contract">Wire contract</a><a href="#manifest">bench.yaml</a><a href="#speed">Speed</a><a href="#attack">Attack rules</a><a href="#runday">Run day</a>
+</nav>
+
+<h2 id="scoring">Simple scoring (100 points)</h2>
+<p>Meeting the requirements is the entry bar, not the score. With AI-assisted coding most builds will meet them, so points come from three numbers that differ between builds, minus 5 for each requirement missed.</p>
+<div class="formula">
+  <span class="part">Speed 40</span><span class="op">+</span><span class="part">Survive 40</span><span class="op">+</span><span class="part">Break 20</span><span class="op">=</span><span class="part">100</span><span class="op">− 5 per missed requirement</span>
+</div>
+<div class="table-wrap"><table>
+  <thead><tr><th>Part</th><th>Points</th><th>How it is measured</th></tr></thead>
+  <tbody>
+    <tr><td>Requirements</td><td>entry bar, minus 5 per miss</td><td>12 pass/fail checks, shared scripts</td></tr>
+    <tr><td>Speed</td><td>40</td><td>p99 latency at 200 rps for 60 s on the bench machine</td></tr>
+    <tr><td>Survive</td><td>40</td><td>Start at 40, minus 10 per confirmed break against your build, floor 0</td></tr>
+    <tr><td>Break</td><td>20</td><td>Plus 5 per confirmed break you land on someone else, cap 20</td></tr>
+  </tbody>
+</table></div>
+
+<p><strong>Requirement checks</strong> (pass or fail; each run 3 times on a fresh stack, 2 of 3 to pass):</p>
+<ol class="checks">
+  <li><strong>Basics.</strong> Create and read back exact content (Unicode, 64 KiB); bad input gets 400. With a passphrase: the right one returns the content, a missing one is refused without using a view, wrong ones get the unknown-id 404 and burn no views, matching is exact, and the passphrase is never echoed (<code>tests/check_passphrase.py</code>).</li>
+  <li><strong>TTL.</strong> <code>ttl_seconds=2</code>, read after 4 s, get 404.</li>
+  <li><strong>Views and revoke.</strong> <code>max_views=3</code> gives 3 reads then 404; delete with token gives 204 then 404; a wrong token leaves the secret readable.</li>
+  <li><strong>Race.</strong> 50 simultaneous GETs on a <code>max_views=1</code> secret return exactly one 200, in all 5 trials.</li>
+  <li><strong>Unguessable IDs.</strong> 200 ids and tokens: no duplicates, no sequence, at least 128 bits; token not derivable from id.</li>
+  <li><strong>No existence oracle.</strong> Wrong passphrase and unknown id give the same status and body, median timing gap under 2 ms over 400 requests.</li>
+  <li><strong>Rate limits.</strong> 200 creates and 500 reads in 10 s from one IP each get a 429 with Retry-After, the first 10 of each are not limited, and the limit holds when every request spoofs <code>X-Forwarded-For</code> or similar headers (<code>tests/ratelimit.js</code>).</li>
+  <li><strong>No plaintext at rest.</strong> Canary content and passphrase absent from DB dumps, container filesystems and volumes.</li>
+  <li><strong>Clean logs.</strong> No canary, passphrase (right or wrong), deletion token (right or wrong), full share URL, full id or URL fragment in any service log, in raw, URL-encoded, base64 or hex form, including on error paths. The id is a bearer capability, so only a short prefix or hash may be logged. Create, read and delete are recorded with time and IP (<code>tests/check_logs.py</code>).</li>
+  <li><strong>Headers.</strong> <code>Cache-Control: no-store</code> and <code>Referrer-Policy: no-referrer</code> on every secret response; CSP on any HTML.</li>
+  <li><strong>Design note.</strong> <code>DESIGN.md</code> of at most 1,000 words with sections on the threat model, where keys live and how deletion deletes, names client-side or server-side encryption with a reason, and was committed no later than the first code file. Checked by <code>tests/check_design.py</code>; the organizer confirms the reason holds up.</li>
+  <li><strong>Metrics.</strong> <code>GET /metrics</code> returns 200 and changes with traffic; it holds no content, passphrase, token, full id, share URL or fragment in any encoding, no client IPs as label values, and no per-secret series (25 creates must add fewer than 25 series). Checked by <code>tests/check_metrics.py</code>.</li>
+</ol>
+
+<p><strong>Speed bands</strong> (median of 3 runs):</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>p99 at 200 rps</th><th>Points</th></tr></thead>
+  <tbody>
+    <tr><td>under 10 ms</td><td>40</td></tr>
+    <tr><td>10 to 25 ms</td><td>30</td></tr>
+    <tr><td>25 to 50 ms</td><td>20</td></tr>
+    <tr><td>50 to 100 ms</td><td>10</td></tr>
+    <tr><td>over 100 ms, or more than 1% errors</td><td>0</td></tr>
+  </tbody>
+</table></div>
+<p>The error rule stops a global lock from passing the race check for free.</p>
+<p><strong>A break counts</strong> when the organizer runs the attacker's reproducer on a fresh stack and it succeeds. Typical breaks: secret read after consume, delete or expiry; plaintext in a dump; more views than allowed; passphrase or deletion-token bypass; ids or tokens leaked via logs, <code>/metrics</code> or errors; rate-limit bypass.</p>
+
+<h2 id="why">Why the PDF alone is not enough</h2>
+<p>Ten builds can be scored on one scale only if four things are fixed first: the wire contract, how the harness gets inside each stack, the machine, and the rate-limit rules for the harness. The PDF leaves all four open, so the same suite would fail sound builds for format reasons and reward fast laptops.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Gap in the PDF</th><th>What goes wrong with 10 builds</th><th>Fix in this standard</th></tr></thead>
+  <tbody>
+    <tr><td>Response fields, passphrase and token transport, status codes are unspecified</td><td>A correct build fails because it returns <code>share_url</code> or reads the passphrase from the body</td><td>Frozen wire contract plus a public conformance check</td></tr>
+    <tr><td>Each stack stores data differently (Redis, Postgres, files, memory)</td><td>The canary grep cannot find the DB or volume</td><td><code>bench.yaml</code> manifest with a dump command</td></tr>
+    <tr><td>10 laptops have different CPUs</td><td>Performance ranks hardware, not design</td><td>All scored runs on one bench machine</td></tr>
+    <tr><td>200 rps from one IP collides with per-IP limits</td><td>Strict limiters fail the load test, loose ones pass it</td><td>One standard exempt variable for the generator; suite phases run from separate source IPs</td></tr>
+    <tr><td>Race and timing checks are noisy</td><td>One unlucky run costs 10 points</td><td>3 runs, 2 of 3 to pass, median for speed</td></tr>
+    <tr><td>Peer finding value of 5 to 10 is undefined</td><td>Organizer judgment varies by finding</td><td>Fixed 10 off per break, 5 per break landed</td></tr>
+  </tbody>
+</table></div>
+<p>The principle: <strong>everything is public: the contract, the 12 checks and the scripts that run them.</strong> Everyone self-tests before freeze. Canary values, marker strings and trial order are random on every run, so nothing can be hard-coded to pass. This departs from the PDF's hidden suite on purpose: the requirements are the entry bar, and points come from speed and the attack phase.</p>
+
+<h2 id="contract">Wire contract (frozen)</h2>
+<p>Every build must accept these requests and return these shapes exactly; extra fields are allowed, missing or renamed ones fail the conformance check. The stack starts with <code>docker compose up -d --build</code>, listens on port 8080, and answers <code>GET /healthz</code> with 200 within 120 s.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Call</th><th>Request</th><th>Success</th><th>Failure</th></tr></thead>
+  <tbody>
+    <tr><td><code>POST /secrets</code></td><td>JSON <code>{content, ttl_seconds, max_views, passphrase?}</code>; <code>content</code> UTF-8 up to 64 KiB, <code>ttl_seconds</code> 1 to 604800, <code>max_views</code> 1 to 100</td><td><code>201</code> JSON <code>{id, url, deletion_token}</code>; <code>url</code> is absolute and its last path segment equals <code>id</code></td><td><code>400</code> for bad JSON, out-of-range or oversize input; nothing stored</td></tr>
+    <tr><td><code>GET /s/{id}</code></td><td>Passphrase in header <code>X-Passphrase</code></td><td><code>200</code> JSON <code>{content}</code></td><td><code>404</code> for unknown, expired, consumed, revoked <strong>and wrong passphrase</strong>, with byte-identical bodies; <code>401</code> allowed only when the passphrase header is missing</td></tr>
+    <tr><td><code>DELETE /s/{id}</code></td><td>Header <code>X-Deletion-Token: &lt;token&gt;</code> (also accept <code>Authorization: Bearer &lt;token&gt;</code>)</td><td><code>204</code>; later GETs return <code>404</code></td><td>Any <code>4xx</code> for a wrong token, and the secret stays readable</td></tr>
+    <tr><td><code>GET /healthz</code></td><td>none</td><td><code>200</code></td><td><code>503</code> when the store is down</td></tr>
+    <tr><td><code>GET /metrics</code></td><td>none</td><td><code>200</code>, any text format</td><td>none</td></tr>
+    <tr><td>Over a rate limit</td><td>any</td><td>none</td><td><code>429</code> with a <code>Retry-After</code> header</td></tr>
+  </tbody>
+</table></div>
+<p>Rules the harness depends on:</p>
+<ul>
+  <li><strong>Headers.</strong> Every response from <code>/secrets</code> and <code>/s/*</code>, including errors, carries <code>Cache-Control: no-store</code> and <code>Referrer-Policy: no-referrer</code>. Any <code>text/html</code> response also carries a <code>Content-Security-Policy</code>.</li>
+  <li><strong>Minimum quota.</strong> Each client IP gets at least 20 creates and 60 reads per minute without a <code>429</code>. The suite needs that much for correctness checks and the 50-way race.</li>
+  <li><strong>Must limit.</strong> 200 creates in 10 s from one IP, or 500 reads in 10 s, must produce at least one <code>429</code>.</li>
+  <li><strong>Client IP.</strong> By default the TCP peer address is the client. <code>X-Forwarded-For</code>, <code>X-Real-IP</code> and <code>Forwarded</code> are ignored unless the peer is in <code>TRUSTED_PROXY_CIDRS</code>.</li>
+  <li><strong>Generator exemption.</strong> Every build honors the environment variable <code>RATE_LIMIT_EXEMPT_CIDRS</code> (comma-separated CIDRs never limited). The harness sets it only for the load test, never for the security suite.</li>
+  <li><strong>Crypto mode.</strong> Server-side builds receive plaintext <code>content</code> and must encrypt it. Client-side builds also ship a client image (see <code>bench.yaml</code>) so the harness can encrypt the canary the way a browser would; the URL fragment then carries the key and the server never sees plaintext.</li>
+</ul>
+
+<h2 id="manifest">Entrant manifest: bench.yaml</h2>
+<p>Each repo ships a <code>bench.yaml</code> at its root so one harness can reach inside any stack. The harness also dumps every container filesystem (<code>docker export</code>) and every volume on its own, so the manifest only covers what generic tooling cannot see, such as an in-memory store.</p>
+<pre><code>name: alice                 # entrant handle, used on the scoreboard
+crypto: server              # server | client
+app_service: app            # compose service that serves port 8080
+client_image: null          # client mode only: image with `enc` and `dec` commands
+                            #   enc: stdin plaintext -&gt; stdout JSON {content, fragment_key}
+                            #   dec: stdin JSON {content, fragment_key} -&gt; stdout plaintext
+db_dump:                    # commands whose stdout must contain every stored value
+  - service: redis
+    cmd: ["sh", "-c", "redis-cli --user dump --pass \"$DUMP_PASS\" --scan | xargs -r -n1 redis-cli --user dump --pass \"$DUMP_PASS\" DUMP"]
+notes: "Redis is memory only; no volumes."</code></pre>
+<p>What the harness does with it:</p>
+<ol>
+  <li>Runs every <code>db_dump</code> command after creating canary secrets, and greps stdout for the canary in raw, base64, hex and URL-encoded forms.</li>
+  <li>Exports every container and tars every named volume and bind mount through a helper container, then greps those archives the same way.</li>
+  <li>Reads <code>docker compose logs</code> for all services.</li>
+</ol>
+<p>A <code>db_dump</code> that hides data (for example, dumping only metadata keys) is itself a confirmed break. Builds with no database still list how to reach whatever holds the secrets.</p>
+
+<h2 id="speed">How speed is measured</h2>
+<p>All performance runs happen on one bench machine, one build at a time, so the speed bands compare designs, not laptops. Laptop results never count; they are for practice only.</p>
+<p>Bench machine setup:</p>
+<ul>
+  <li>One Linux host or one Docker Desktop VM pinned to 4 CPUs and 8 GB, nothing else running. Docker Desktop on Windows adds a host-port proxy stall, so the generator always runs <strong>inside the compose network</strong>, never from the host.</li>
+  <li>The generator container is pinned to its own CPUs (<code>--cpuset-cpus</code>), so it does not steal from the build under test.</li>
+  <li><code>RATE_LIMIT_EXEMPT_CIDRS</code> is set to the generator's subnet for this phase only.</li>
+  <li>A reference build (the organizer's) runs before and after each entrant. If its p99 drifts more than 10% between those runs, the entrant's run is repeated.</li>
+</ul>
+<p>Workload, k6 <code>constant-arrival-rate</code>:</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Phase</th><th>Rate</th><th>Duration</th><th>Request mix</th></tr></thead>
+  <tbody>
+    <tr><td>Warm-up (not scored)</td><td>200 rps</td><td>15 s</td><td>Same mix</td></tr>
+    <tr><td>Scored run</td><td>200 rps</td><td>60 s</td><td>40% create, 40% read of a fresh secret, 20% read of an unknown id</td></tr>
+  </tbody>
+</table></div>
+<p>A request is an error if it times out (2 s), returns 5xx, or returns anything other than 201 for a create, 200 for a fresh read, and 404 for an unknown id.</p>
+<p>Fallback if no shared machine exists: each entrant runs the reference build and their own build back to back on their laptop with the same script, and scores use the ratio to their own reference run. That is noisier, so use it only for practice rounds.</p>
+
+<h2 id="attack">Attack phase rules</h2>
+<p>Assignments and scope:</p>
+<ul>
+  <li>Each entrant attacks 2 assigned builds, drawn so nobody attacks someone who attacks them. With 10 people every build is attacked twice.</li>
+  <li>Attackers get the target's repo, <code>DESIGN.md</code> and <code>bench.yaml</code>, and their own running copy of the stack.</li>
+  <li>In scope: HTTP to port 8080, and read-only <code>docker exec</code> into the target's containers to model a stolen disk or DB backup. Out of scope: the host, the Docker daemon, other people's machines, denial of service.</li>
+  <li>Window: 90 minutes, findings timestamped when submitted.</li>
+</ul>
+<p>Rules:</p>
+<ul>
+  <li><strong>Reproducer required.</strong> One file, <code>repro.sh</code> or <code>repro.py</code>, takes <code>BASE_URL</code> (and the compose project name if it uses <code>docker exec</code>), runs against a fresh <code>docker compose up</code> in under 2 minutes, and exits 0 only when the break works.</li>
+  <li><strong>Organizer confirms</strong> by running it twice on the bench machine. No exit 0, no points.</li>
+  <li><strong>Dedup.</strong> One root cause on one target is one break; the earliest submission wins. The same bug on a different target counts again.</li>
+  <li><strong>No double penalty.</strong> If a requirement check already failed for that bug, the attacker still gets 5 but the defender loses nothing more.</li>
+</ul>
+
+<h2 id="runday">Run day and scorecard</h2>
+<p>A full round takes about 5 hours on the bench machine: about 15 minutes of suite and load runs per build, then the 90-minute attack window and confirmation.</p>
+<ol>
+  <li><strong>Before freeze.</strong> Organizer publishes this standard, all check scripts (<code>tests/ratelimit.js</code>, <code>check_passphrase.py</code>, <code>check_logs.py</code>, <code>check_metrics.py</code>, <code>check_design.py</code> and the rest of the suite) and the reference build. Everyone runs them against their own stack until all 12 requirements are green.</li>
+  <li><strong>Freeze.</strong> Each entrant pushes a git tag <code>round1-final</code> with <code>docker-compose.yml</code>, <code>DESIGN.md</code> and <code>bench.yaml</code> at the root. Commits after the tag are ignored.</li>
+  <li><strong>Suite.</strong> Organizer clones every tag to the bench machine and runs <code>bench suite &lt;repo&gt;</code> 3 times on fresh stacks, then <code>docker compose down -v</code> between runs.</li>
+  <li><strong>Load.</strong> <code>bench perf &lt;repo&gt;</code> 3 times, reference build before and after, machine otherwise idle.</li>
+  <li><strong>Publish suite and performance scores</strong>, so attackers can see where defenses are already weak.</li>
+  <li><strong>Attack window.</strong> 90 minutes. Findings go into a shared folder as <code>findings/&lt;attacker&gt;__&lt;target&gt;__&lt;n&gt;/</code> with <code>README.md</code> and the reproducer.</li>
+  <li><strong>Confirm and publish</strong> the final scoreboard. Each defender gets their findings and reproducers.</li>
+</ol>
+<p>Every run writes one JSON file per build, so scores can be rechecked and compared across rounds:</p>
+<pre><code>{
+  "entrant": "alice",
+  "tag": "round1-final",
+  "commit": "3f2a9c1",
+  "requirements": {"failed": [7], "penalty": -5},
+  "speed": {"p99_ms": 23.7, "error_rate": 0.0, "points": 30},
+  "survive": {"breaks_against": 1, "points": 30},
+  "break": {"breaks_landed": 2, "points": 10},
+  "score": 65
+}</code></pre>
+<p>For later rounds, keep the harness, the manifest, the bench machine and the peer rules; swap only the wire contract and the check table.</p>
+</main>
+</body>
+</html>

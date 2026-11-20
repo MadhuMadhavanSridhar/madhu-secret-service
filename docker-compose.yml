@@ -1,0 +1,55 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      REDIS_ADDR: redis:6379
+      REDIS_USERNAME: app
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ots-internal-only-change-me}
+      # Tunables (see README): RATE_CREATE_PER_MIN, RATE_READ_PER_MIN,
+      # RATE_LIMIT_EXEMPT_CIDRS, TRUSTED_PROXY_CIDRS, PUBLIC_BASE_URL,
+      # MAX_CONTENT_BYTES, MAX_PASSPHRASE_FAILURES.
+      RATE_LIMIT_EXEMPT_CIDRS: ${RATE_LIMIT_EXEMPT_CIDRS:-}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    # The ACL file is rendered at start from the environment so the password
+    # is never committed. Redis keeps nothing on disk: no RDB, no AOF, and
+    # /data is tmpfs in case anything ever tried.
+    command:
+      - sh
+      - -ec
+      - |
+        umask 077
+        printf 'user default off\n' > /run/redis/users.acl
+        printf 'user health on >health-ping-only +ping\n' >> /run/redis/users.acl
+        printf 'user app on >%s ~s:* ~rl:* +@all -@dangerous +client|setinfo\n' "$$REDIS_PASSWORD" >> /run/redis/users.acl
+        exec redis-server /usr/local/etc/redis/redis.conf --aclfile /run/redis/users.acl
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ots-internal-only-change-me}
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    tmpfs:
+      - /data
+      - /run/redis
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "--user", "health", "--pass", "health-ping-only", "--no-auth-warning", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    restart: unless-stopped

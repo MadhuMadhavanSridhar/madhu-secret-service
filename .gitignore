@@ -1,0 +1,6 @@
+.env
+/bin/
+/server
+/server.exe
+__pycache__/
+.pytest_cache/
